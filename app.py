@@ -147,6 +147,8 @@ with st.sidebar:
             type="password",
             help="Your key stays in session memory and is never logged or written to disk.",
         )
+        if user_api_key and len(user_api_key.strip()) < 15:
+            st.info("💡 A valid Google API Key is usually 30-60 characters long. Click 'Copy key' from Google AI Studio and paste it here.")
         st.caption(
             "Get a free API key at [Google AI Studio](https://aistudio.google.com/app/apikey)."
         )
@@ -292,19 +294,56 @@ with tab_inspect:
             )
         else:
             # Check API Key availability
-            if not user_api_key or user_api_key == "your_gemini_api_key_here":
+            session_key = st.session_state.get("api_key", "").strip()
+            effective_key = user_api_key or session_key
+
+            if not effective_key or effective_key == "your_gemini_api_key_here":
                 st.warning("⚠️ Multimodal AI service is not yet configured.")
                 st.markdown(
                     """
-                    **How to configure the AI service:**
-                    1. Create a free Gemini API Key at [Google AI Studio](https://aistudio.google.com/app/apikey).
-                    2. Either enter it in the **Sidebar Configuration** on the left, or create a `.env` file in the project folder with:
-                       ```env
-                       GEMINI_API_KEY=your_actual_key_here
-                       ```
-                    3. Restart or refresh the page.
+                    To analyze this cocoon photograph, SilkCocoon AI connects to Google's Multimodal Vision AI.
+                    
+                    You can get a **100% free Gemini API key** in 30 seconds (no credit card required).
                     """
                 )
+
+                st.markdown("#### 🔑 Activate AI Vision Engine")
+                direct_key_input = st.text_input(
+                    "Paste your Gemini API Key below:",
+                    type="password",
+                    placeholder="AIzaSy...",
+                    help="Your key is kept safe and used only for evaluating your uploaded photo.",
+                )
+
+                col_k1, col_k2 = st.columns([1, 1])
+                with col_k1:
+                    save_env_choice = st.checkbox("Remember key on this computer (save to `.env`)", value=True)
+                with col_k2:
+                    st.caption("[👉 Get Free Key at Google AI Studio](https://aistudio.google.com/app/apikey)")
+
+                if st.button("🚀 Activate & Run Analysis", type="primary", use_container_width=True):
+                    if direct_key_input and direct_key_input.strip():
+                        clean_k = direct_key_input.strip()
+                        st.session_state["api_key"] = clean_k
+                        if save_env_choice:
+                            try:
+                                env_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+                                with open(env_file_path, "w", encoding="utf-8") as f:
+                                    f.write(f"GEMINI_API_KEY={clean_k}\nGEMINI_MODEL=gemini-1.5-flash\nMAX_UPLOAD_SIZE_MB=10\n")
+                            except Exception:
+                                pass
+                        st.rerun()
+                    else:
+                        st.error("Please paste your Gemini API Key in the box above.")
+
+                with st.expander("❓ How to get your free Gemini API Key (3 Quick Steps)"):
+                    st.markdown(
+                        """
+                        1. Visit **[Google AI Studio](https://aistudio.google.com/app/apikey)** and sign in with any Google account.
+                        2. Click the blue **'Create API key'** button (select 'Create in new project').
+                        3. Copy the key (starts with `AIzaSy...`) and paste it into the box above!
+                        """
+                    )
                 st.stop()
 
             # Trigger Button
@@ -315,7 +354,7 @@ with tab_inspect:
                     # Step 1: Call Multimodal Vision AI
                     success, ai_response, error_msg = analyze_cocoon_image_with_gemini(
                         image=valid_img_obj,
-                        api_key=user_api_key,
+                        api_key=effective_key,
                         model_name=selected_model,
                     )
 

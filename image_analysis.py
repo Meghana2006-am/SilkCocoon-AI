@@ -210,6 +210,13 @@ def analyze_cocoon_image_with_gemini(
     except Exception as exc:
         # Never leak secrets or raw trace in client response
         error_msg = str(exc)
+        if "ACCESS_TOKEN_TYPE_UNSUPPORTED" in error_msg or effective_key.startswith("AQ."):
+            return False, {}, (
+                "The key you entered starts with 'AQ.', which is a restricted Google Cloud token. "
+                "Google Gemini requires an AI Studio key starting with 'AIzaSy...'. "
+                "Please go to https://aistudio.google.com/app/apikey, click 'Create API key', "
+                "choose 'Create API key in new project', and copy that key."
+            )
         if "API_KEY_INVALID" in error_msg or "invalid api key" in error_msg.lower():
             return False, {}, "The provided Gemini API Key is invalid or expired. Please check your credentials."
         if "quota" in error_msg.lower() or "429" in error_msg:

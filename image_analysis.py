@@ -192,9 +192,27 @@ def parse_and_validate_ai_json(json_text: str) -> Tuple[bool, Dict[str, Any], st
 # ---------------------------------------------------------------------------
 # Provider helpers (Sarvam AI)
 # ---------------------------------------------------------------------------
+def normalize_api_key(value: Optional[str]) -> str:
+    """
+    Clean up common copy/paste artifacts from an API key:
+    surrounding whitespace, wrapping quotes, and stray backslashes
+    (e.g. "sk\\_abc" pasted out of a formatted/markdown message).
+
+    A valid Sarvam key only ever contains letters, digits, '_' and '-', so
+    stripping a backslash can never corrupt a real key.
+    """
+    if not value:
+        return ""
+    key = str(value).strip()
+    if len(key) >= 2 and key[0] in ('"', "'") and key[-1] == key[0]:
+        key = key[1:-1].strip()
+    key = key.replace("\\", "").strip()
+    return key
+
+
 def _get_effective_key(api_key: Optional[str] = None) -> str:
     """Resolve the Sarvam API key from the argument, then the environment."""
-    return (api_key or os.getenv("SARVAM_API_KEY", "")).strip()
+    return normalize_api_key(api_key or os.getenv("SARVAM_API_KEY", ""))
 
 
 def _is_valid_key(effective_key: str) -> bool:
@@ -363,12 +381,17 @@ def _friendly_http_error(resp, effective_model: str, effective_key: str) -> str:
 
     if status in (401, 403):
         return (
-            "The Sarvam API key was rejected (auth failed). Check that SARVAM_API_KEY is "
-            "correct and active in your Sarvam dashboard, then retry."
+            "Sarvam rejected the API key (auth failed, HTTP 403). The key was received but is "
+            "not valid or active. Check for a typo or partial paste, stray quotes or spaces, or "
+            "a rotated key. Run 'python check_key.py' in the project folder to test the key in "
+            "isolation, then restart Streamlit."
         )
     if status == 404 or "not found" in lowered or "unknown id" in lowered:
         available = list_available_models(api_key=effective_key)
-        hint = f" Models enabled for your key: {', '.join(available[:6])}." if available else ""
+        hint = (
+            f" Model IDs advertised by the endpoint: {', '.join(available[:6])} "
+            "(note: this list is not an auth check)."
+        ) if available else ""
         return (
             f"The model '{effective_model}' is not available on this API key.{hint} "
             "Note: 'gemma4' is the image-capable Sarvam model; the beta endpoint must be "

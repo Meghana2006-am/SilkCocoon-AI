@@ -7,7 +7,7 @@ from PIL import Image
 from image_analysis import (
     clean_json_response,
     parse_and_validate_ai_json,
-    analyze_cocoon_image_with_gemini,
+    analyze_cocoon_image,
 )
 
 
@@ -56,27 +56,27 @@ def test_parse_invalid_json_syntax():
 
 def test_missing_api_credentials_handling():
     """
-    Verify that calling analysis with missing or dummy API key returns
-    a clear setup instruction instead of crashing or leaking exceptions.
+    Verify that calling analysis with a missing API key returns a clear setup
+    instruction instead of crashing or leaking exceptions.
     """
     dummy_img = Image.new("RGB", (100, 100), color=(255, 255, 255))
-    success, data, err_msg = analyze_cocoon_image_with_gemini(
+    success, data, err_msg = analyze_cocoon_image(
         image=dummy_img,
         api_key="",  # Blank key
     )
 
     assert success is False
-    assert "GEMINI_API_KEY is not configured" in err_msg
-    assert "https://aistudio.google.com" in err_msg
+    assert "SARVAM_API_KEY is not configured" in err_msg
+    assert "dashboard.sarvam.ai" in err_msg
     assert data == {}
 
 
 def test_dummy_placeholder_api_key_handling():
     """Verify that the unedited template key is caught as unconfigured."""
     dummy_img = Image.new("RGB", (100, 100), color=(255, 255, 255))
-    success, data, err_msg = analyze_cocoon_image_with_gemini(
+    success, data, err_msg = analyze_cocoon_image(
         image=dummy_img,
-        api_key="your_gemini_api_key_here",
+        api_key="your_sarvam_api_key_here",
     )
 
     assert success is False

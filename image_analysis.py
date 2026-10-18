@@ -3,19 +3,54 @@ SilkCocoonAI - Multimodal AI Image Analysis (image_analysis.py)
 
 This module handles:
 1. Secure, in-memory validation of uploaded cocoon photographs.
-2. Prompt engineering for sericulture grading using multimodal Vision AI.
+2. Prompt engineering for sericulture grading using a multimodal Vision AI.
 3. Clean JSON schema enforcement and robust response parsing.
 4. Safe error handling when credentials are missing or models return invalid data.
+5. Sarvam AI as the vision provider: we call Sarvam's OpenAI-compatible
+   Chat Completion V2 endpoint (https://api.sarvam.ai/v2/chat/completions).
+   The image-capable Sarvam model is `gemma4` (Gemma 4 31B, text + image input).
+
+Provider notes
+--------------
+- Endpoint:  POST https://api.sarvam.ai/v2/chat/completions
+- Auth:      header `api-subscription-key: <SARVAM_API_KEY>`
+- Images:    must be inline base64 data URIs in an `image_url` content part.
+             Remote image URLs are rejected by the API.
+- Model:     `gemma4` accepts text + images. `sarvam-105b`, `glm5.3` and
+             `deepseekv4.1-flash` are text-only and cannot grade a photo.
 """
 
 import io
 import os
 import json
+import base64
 import re
-from typing import Dict, Any, Tuple, Optional
+from typing import Dict, Any, Tuple, Optional, List
 from PIL import Image
 
-# Sericulture Prompt for Multimodal Vision Model
+import requests
+
+# ---------------------------------------------------------------------------
+# Provider configuration
+# ---------------------------------------------------------------------------
+SARVAM_CHAT_URL = os.getenv("SARVAM_CHAT_URL", "https://api.sarvam.ai/v2/chat/completions").strip()
+SARVAM_MODELS_URL = os.getenv("SARVAM_MODELS_URL", "https://api.sarvam.ai/v2/models").strip()
+
+# The only Sarvam model that accepts image input.
+DEFAULT_MODEL = os.getenv("SARVAM_MODEL", "").strip() or "gemma4"
+
+# Ordered best-first for image work. Only `gemma4` is vision-capable today;
+# the rest are listed so the app degrades gracefully if that changes.
+PREFERRED_MODELS: List[str] = ["gemma4"]
+
+# Text-only models - never usable for grading a photo.
+TEXT_ONLY_MODELS = {"sarvam-105b", "sarvam-105b-conversations", "glm5.3",
+                    "glm5.2", "deepseekv4.1-flash", "sarvam-m", "sarvam-30b"}
+
+REQUEST_TIMEOUT_SECONDS = 90
+
+
+# Sericulture Prompt for the Multimodal Vision Model
 SERICULTURE_VISION_PROMPT = """
 You are an expert Sericulture Inspector and Agricultural Vision AI specialist.
 Analyze this silkworm cocoon image strictly according to commercial silk grading standards.
@@ -154,71 +189,202 @@ def parse_and_validate_ai_json(json_text: str) -> Tuple[bool, Dict[str, Any], st
     return True, parsed, ""
 
 
-def analyze_cocoon_image_with_gemini(
+# ---------------------------------------------------------------------------
+# Provider helpers (Sarvam AI)
+# ---------------------------------------------------------------------------
+def _get_effective_key(api_key: Optional[str] = None) -> str:
+    """Resolve the Sarvam API key from the argument, then the environment."""
+    return (api_key or os.getenv("SARVAM_API_KEY", "")).strip()
+
+
+def _is_valid_key(effective_key: str) -> bool:
+    return bool(effective_key) and effective_key != "your_sarvam_api_key_here"
+
+
+def _image_to_data_uri(image: Image.Image, quality: int = 85) -> str:
+    """Encode a PIL image as an inline base64 JPEG data URI (Sarvam requires inline)."""
+    buffer = io.BytesIO()
+    rgb = image.convert("RGB") if image.mode != "RGB" else image
+    rgb.save(buffer, format="JPEG", quality=quality)
+    encoded = base64.b64encode(buffer.getvalue()).decode("utf-8")
+    return f"data:image/jpeg;base64,{encoded}"
+
+
+def list_available_models(api_key: Optional[str] = None) -> List[str]:
+    """
+    Ask Sarvam which model IDs this key can use (GET /v2/models).
+    Never raises: returns an empty list if discovery is impossible.
+    """
+    effective_key = _get_effective_key(api_key)
+    if not _is_valid_key(effective_key):
+        return []
+    try:
+        resp = requests.get(
+            SARVAM_MODELS_URL,
+            headers={"api-subscription-key": effective_key},
+            timeout=20,
+        )
+        if resp.status_code != 200:
+            return []
+        data = resp.json()
+        return [m.get("id", "") for m in data.get("data", []) if m.get("id")]
+    except Exception:
+        return []
+
+
+def resolve_model_name(api_key: Optional[str] = None, requested: Optional[str] = None) -> Tuple[str, str]:
+    """
+    Choose a usable, image-capable Sarvam model.
+
+    Returns (model_name, note). Falls back to `gemma4` if the requested model is
+    text-only or unavailable.
+    """
+    requested = (requested or "").strip()
+    if requested in TEXT_ONLY_MODELS:
+        return DEFAULT_MODEL, (
+            f"'{requested}' is a text-only model and cannot read a photo; using '{DEFAULT_MODEL}'."
+        )
+
+    available = list_available_models(api_key)
+    if available:
+        if requested and requested in available:
+            return requested, ""
+        for candidate in PREFERRED_MODELS:
+            if candidate in available:
+                note = f"Requested model '{requested}' is unavailable; using '{candidate}'." if requested else ""
+                return candidate, note
+        # Nothing preferred is enabled on this key.
+        return requested or DEFAULT_MODEL, ""
+
+    return requested or DEFAULT_MODEL, ""
+
+
+def analyze_cocoon_image(
     image: Image.Image,
     api_key: Optional[str] = None,
     model_name: Optional[str] = None,
 ) -> Tuple[bool, Dict[str, Any], str]:
     """
-    Invokes the verified Google Gemini Vision AI model to inspect the cocoon image.
+    Invokes the Sarvam multimodal Vision model to inspect the cocoon image.
     Never fabricates responses: if the API key is missing or invalid, reports a clear error.
     """
     # 1. Retrieve API Key
-    effective_key = api_key or os.getenv("GEMINI_API_KEY", "").strip()
-    if not effective_key or effective_key == "your_gemini_api_key_here":
+    effective_key = _get_effective_key(api_key)
+    if not _is_valid_key(effective_key):
         return False, {}, (
-            "GEMINI_API_KEY is not configured. "
-            "Please obtain a free key at https://aistudio.google.com/app/apikey "
-            "and add it to your .env file or enter it in the sidebar settings."
+            "SARVAM_API_KEY is not configured. "
+            "Please obtain an API key from https://dashboard.sarvam.ai and add it to your "
+            ".env file or enter it in the sidebar settings."
         )
 
-    # 2. Select Model Name
-    effective_model = model_name or os.getenv("GEMINI_MODEL", "gemini-1.5-flash").strip()
+    # 2. Select Model Name (auto-resolve to an image-capable model)
+    effective_model = (model_name or DEFAULT_MODEL).strip()
+    effective_model, _note = resolve_model_name(api_key=effective_key, requested=effective_model)
 
+    # 3. Build the OpenAI-compatible request with an inline image
     try:
-        import google.generativeai as genai
-    except ImportError:
-        return False, {}, (
-            "The 'google-generativeai' package is not installed. "
-            "Run 'pip install google-generativeai' in your terminal."
-        )
-
-    try:
-        # Configure client with API Key
-        genai.configure(api_key=effective_key)
-        model = genai.GenerativeModel(effective_model)
-
-        # Call multimodal model with system instructions & image
-        response = model.generate_content(
-            [SERICULTURE_VISION_PROMPT, image],
-            generation_config={"temperature": 0.2, "top_p": 0.9}
-        )
-
-        if not response or not response.text:
-            return False, {}, "Multimodal AI returned an empty response. Please retry."
-
-        # Clean markdown code blocks
-        clean_text = clean_json_response(response.text)
-
-        # Parse and validate JSON structure
-        success, parsed_data, err_msg = parse_and_validate_ai_json(clean_text)
-        if not success:
-            return False, {}, f"Model returned invalid structured output: {err_msg}"
-
-        return True, parsed_data, ""
-
+        data_uri = _image_to_data_uri(image)
     except Exception as exc:
-        # Never leak secrets or raw trace in client response
-        error_msg = str(exc)
-        if "ACCESS_TOKEN_TYPE_UNSUPPORTED" in error_msg or effective_key.startswith("AQ."):
-            return False, {}, (
-                "The key you entered starts with 'AQ.', which is a restricted Google Cloud token. "
-                "Google Gemini requires an AI Studio key starting with 'AIzaSy...'. "
-                "Please go to https://aistudio.google.com/app/apikey, click 'Create API key', "
-                "choose 'Create API key in new project', and copy that key."
-            )
-        if "API_KEY_INVALID" in error_msg or "invalid api key" in error_msg.lower():
-            return False, {}, "The provided Gemini API Key is invalid or expired. Please check your credentials."
-        if "quota" in error_msg.lower() or "429" in error_msg:
-            return False, {}, "API rate limit reached. Please wait a few moments and retry."
-        return False, {}, f"AI analysis error: {error_msg}"
+        return False, {}, f"Could not prepare the image for analysis: {exc}"
+
+    payload = {
+        "model": effective_model,
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": SERICULTURE_VISION_PROMPT},
+                    {"type": "image_url", "image_url": {"url": data_uri}},
+                ],
+            }
+        ],
+        "temperature": 0.2,
+        "top_p": 0.9,
+        "max_tokens": 1500,
+    }
+
+    try:
+        resp = requests.post(
+            SARVAM_CHAT_URL,
+            headers={
+                "api-subscription-key": effective_key,
+                "Content-Type": "application/json",
+            },
+            json=payload,
+            timeout=REQUEST_TIMEOUT_SECONDS,
+        )
+    except requests.exceptions.Timeout:
+        return False, {}, "The AI request timed out. Please check your connection and retry."
+    except requests.exceptions.RequestException as exc:
+        return False, {}, f"Could not reach the Sarvam AI service: {exc}"
+
+    # 4. Handle non-200 responses with clear, secret-free guidance
+    if resp.status_code != 200:
+        return False, {}, _friendly_http_error(resp, effective_model, effective_key)
+
+    # 5. Extract the model's text answer
+    try:
+        body = resp.json()
+    except ValueError:
+        return False, {}, "The AI service returned a non-JSON response. Please retry."
+
+    content = ""
+    try:
+        content = body["choices"][0]["message"]["content"] or ""
+    except (KeyError, IndexError, TypeError):
+        content = ""
+
+    if isinstance(content, list):
+        # Some OpenAI-compatible servers return content as a list of parts.
+        content = "".join(part.get("text", "") for part in content if isinstance(part, dict))
+
+    if not content.strip():
+        return False, {}, "Multimodal AI returned an empty response. Please retry."
+
+    # 6. Clean markdown code blocks and parse the JSON structure
+    clean_text = clean_json_response(content)
+    success, parsed_data, err_msg = parse_and_validate_ai_json(clean_text)
+    if not success:
+        return False, {}, f"Model returned invalid structured output: {err_msg}"
+
+    parsed_data["_model_used"] = effective_model
+    return True, parsed_data, ""
+
+
+def _friendly_http_error(resp, effective_model: str, effective_key: str) -> str:
+    """Map Sarvam HTTP errors to clear guidance without leaking secrets."""
+    status = resp.status_code
+    try:
+        err_body = resp.json()
+        err_text = json.dumps(err_body)
+    except ValueError:
+        err_text = (resp.text or "")[:300]
+    lowered = err_text.lower()
+
+    if status in (401, 403):
+        return (
+            "The Sarvam API key was rejected (auth failed). Check that SARVAM_API_KEY is "
+            "correct and active in your Sarvam dashboard, then retry."
+        )
+    if status == 404 or "not found" in lowered or "unknown id" in lowered:
+        available = list_available_models(api_key=effective_key)
+        hint = f" Models enabled for your key: {', '.join(available[:6])}." if available else ""
+        return (
+            f"The model '{effective_model}' is not available on this API key.{hint} "
+            "Note: 'gemma4' is the image-capable Sarvam model; the beta endpoint must be "
+            "enabled for your key (contact Sarvam to request access)."
+        )
+    if status == 429:
+        return "Sarvam API rate limit reached. Please wait a few moments and retry."
+    if status == 422:
+        return (
+            "The request was rejected as unprocessable (the image may be too large for the "
+            "model's context, or the endpoint is not enabled for your key). Try a smaller photo."
+        )
+    if status >= 500:
+        return "The Sarvam AI service is temporarily unavailable. Please retry in a moment."
+    return f"Sarvam AI analysis error (HTTP {status}): {err_text}"
+
+
+# Backwards-compatible alias (older code/tests may import the Gemini-era name).
+analyze_cocoon_image_with_gemini = analyze_cocoon_image

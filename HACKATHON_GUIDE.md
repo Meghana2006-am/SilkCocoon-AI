@@ -36,7 +36,7 @@ This guide prepares you for a winning, honest, and high-impact hackathon present
 ┌───────────────────────────────┐ ┌──────────────────────────────┐
 │  Multimodal Vision Engine     │ │  Domain Scoring (scoring.py) │
 │  (image_analysis.py)          │ │  - Central Silk Board rules  │
-│  - Google Gemini 1.5 Flash    │ │  - Fatal defect rejection    │
+│  - Sarvam AI Gemma 4 31B      │ │  - Fatal defect rejection    │
 │  - Vision Feature Extraction  │ │  - Transparent math formula  │
 │  - Structured JSON Validation │ │  - Anti-hallucination guard  │
 └───────────────────────────────┘ └──────────────────────────────┘
@@ -50,7 +50,7 @@ This guide prepares you for a winning, honest, and high-impact hackathon present
 | :--- | :--- |
 | **Python 3.13** | Clean syntax, beginner-friendly maintainability, robust standard library. |
 | **Streamlit** | Enables lightning-fast web deployment, native camera input for farmers, and reactive mobile-friendly components without heavy frontend tooling. |
-| **Google Gemini 1.5 Flash** | High visual spatial resolution, lightning-fast inference (<1.5s), cost-effective, and supports structured JSON outputs for verifiable reasoning. |
+| **Sarvam AI (Gemma 4 31B, `gemma4`)** | Multimodal text + image understanding served on Sarvam's OpenAI-compatible Chat Completion V2 API; low latency, rupee pricing, and structured JSON outputs for verifiable reasoning. |
 | **Pillow (PIL)** | Safe in-memory image processing, header verification, format validation, and zero temporary files on disk. |
 | **Pytest** | Automated verification of image boundaries, scoring logic, and negative guardrail tests. |
 

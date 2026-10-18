@@ -1,11 +1,17 @@
 """
 SilkCocoonAI - Sample Asset Generator (generate_sample_assets.py)
 
-Generates realistic mock sericulture test images for local testing and demos:
-1. Grade A Cocoon (clean, oval, pristine white)
-2. Stained Cocoon (amber/brown discoloration)
-3. Pierced Cocoon (characteristic dark emergence hole)
-4. Non-Cocoon (coffee mug / fruit for out-of-domain testing)
+Generates SCHEMATIC TEST PATTERNS (simple drawn shapes) for exercising the
+pipeline offline:
+1. Cocoon shape (clean, oval, white)
+2. Stained shape (amber/brown discoloration)
+3. Pierced shape (dark emergence hole)
+4. Non-cocoon shape (a mug, for out-of-domain testing)
+
+IMPORTANT: these are deliberately simple vector-style drawings, NOT photographs.
+They are useful for testing image validation, in-memory handling and the
+manual-review guardrail, but a real multimodal model will (correctly) decline to
+grade them as cocoons. To see actual grades, upload real cocoon photographs.
 """
 
 import os
@@ -61,7 +67,7 @@ def create_sample_assets(output_dir: str):
     draw_d.arc([340, 190, 430, 300], start=-90, end=90, fill=(50, 110, 180), width=14)
     img_d.save(os.path.join(output_dir, "sample_not_a_cocoon.jpg"), "JPEG", quality=95)
 
-    print(f"Successfully generated 4 sample images in: {output_dir}")
+    print(f"Successfully generated 4 schematic test patterns in: {output_dir}")
 
 
 if __name__ == "__main__":

@@ -18,14 +18,27 @@ load_dotenv()
 # Import local modules
 from image_analysis import (
     validate_image_bytes,
-    analyze_cocoon_image_with_gemini,
+    analyze_cocoon_image,
 )
 from scoring import (
     calculate_cocoon_grade,
     CocoonGradingResult,
     DEFECT_PENALTY_WEIGHTS,
 )
+from market import (
+    estimate_lot_value,
+    estimate_single_grade,
+    grade_rate_per_kg,
+    BASE_PRICE_PER_KG,
+    COLOR_MULTIPLIERS,
+)
+from batch import (
+    build_batch_report,
+    batch_report_to_csv,
+)
 
+# ---------------------------------------------------------
+# Page Configuration & Styling
 
 # ---------------------------------------------------------
 # WSGI Serverless Entry Point Compatibility (Vercel)
@@ -39,9 +52,7 @@ except Exception:
 
 
 def run_streamlit_dashboard():
-    """Runs the interactive Streamlit Sericulture Inspection UI."""
-    # ---------------------------------------------------------
-    # Page Configuration & Styling
+    """Runs the interactive Streamlit Sericulture Inspection & Market UI."""
     # ---------------------------------------------------------
     st.set_page_config(
         page_title="SilkCocoon AI - Sericulture Quality Grading",
@@ -148,45 +159,70 @@ def run_streamlit_dashboard():
         st.title("⚙️ Configuration")
 
         # API Key check and manual entry option
-        env_key = os.getenv("GEMINI_API_KEY", "").strip()
-        has_env_key = bool(env_key and env_key != "your_gemini_api_key_here")
+        env_key = os.getenv("SARVAM_API_KEY", "").strip()
+        has_env_key = bool(env_key and env_key != "your_sarvam_api_key_here")
 
         if has_env_key:
-            st.success("✅ GEMINI_API_KEY detected from environment.")
+            st.success("✅ SARVAM_API_KEY detected from environment.")
             user_api_key = env_key
         else:
             st.warning("⚠️ API Key not configured in `.env`.")
             user_api_key = st.text_input(
-                "Enter Gemini API Key (Temporary Session):",
+                "Enter Sarvam API Key (Temporary Session):",
                 type="password",
                 help="Your key stays in session memory and is never logged or written to disk.",
             )
             if user_api_key and len(user_api_key.strip()) < 15:
-                st.info("💡 A valid Google API Key is usually 30-60 characters long. Click 'Copy key' from Google AI Studio and paste it here.")
+                st.info("💡 Paste the API subscription key from your Sarvam dashboard.")
             st.caption(
-                "Get a free API key at [Google AI Studio](https://aistudio.google.com/app/apikey)."
+                "Get an API key at [Sarvam dashboard](https://dashboard.sarvam.ai)."
             )
 
         # Model Selection
+        # Sarvam's image-capable model is `gemma4` (Gemma 4 31B, text + image input).
+        # The other Sarvam chat models (sarvam-105b, glm5.3, deepseekv4.1-flash) are
+        # text-only and cannot read a photograph.
+        default_model = os.getenv("SARVAM_MODEL", "").strip()
+        model_options = [
+            "gemma4",
+            "Custom model name...",
+        ]
+        default_index = model_options.index(default_model) if default_model in model_options else 0
+
         selected_model = st.selectbox(
             "Multimodal AI Model:",
-            options=["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"],
-            index=0,
-            help="Fast, cost-effective multimodal vision model for real-time agricultural grading.",
+            options=model_options,
+            index=default_index,
+            help=(
+                "gemma4 is the image-capable Sarvam model. Its beta endpoint must be "
+                "enabled for your API key."
+            ),
         )
+        if selected_model == "Custom model name...":
+            selected_model = st.text_input(
+                "Enter model name:",
+                value=default_model or "gemma4",
+                help="Any image-capable model your Sarvam API key can access.",
+            ).strip() or "gemma4"
 
         st.markdown("---")
         st.subheader("🧪 Demo Sample Gallery")
-        st.write("Test grading instantly without needing your own photos:")
+        st.write("Exercise the pipeline without needing your own photos:")
+        st.caption(
+            "⚠️ These are **schematic test patterns** — simple drawn shapes, not photographs. "
+            "A real vision model correctly routes them to **Manual Review** rather than grading "
+            "them, which is the anti-fabrication guardrail working. Upload a real cocoon photo "
+            "to get an actual grade."
+        )
 
         sample_choice = st.radio(
             "Select a sample image:",
             options=[
                 "None (Upload my own)",
-                "Sample 1: Grade A Bivoltine",
-                "Sample 2: Stained Cocoon",
-                "Sample 3: Uzifly Pierced Cocoon",
-                "Sample 4: Non-Cocoon (Out of Domain)",
+                "Sample 1: Schematic cocoon shape (test pattern)",
+                "Sample 2: Schematic stained shape (test pattern)",
+                "Sample 3: Schematic pierced shape (test pattern)",
+                "Sample 4: Non-cocoon shape (test pattern)",
             ],
             index=0,
         )
@@ -211,10 +247,10 @@ def run_streamlit_dashboard():
     def get_sample_image_bytes(choice: str) -> BytesIO:
         base_assets = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
         mapping = {
-            "Sample 1: Grade A Bivoltine": os.path.join(base_assets, "sample_grade_a.jpg"),
-            "Sample 2: Stained Cocoon": os.path.join(base_assets, "sample_stained.jpg"),
-            "Sample 3: Uzifly Pierced Cocoon": os.path.join(base_assets, "sample_pierced.jpg"),
-            "Sample 4: Non-Cocoon (Out of Domain)": os.path.join(base_assets, "sample_not_a_cocoon.jpg"),
+            "Sample 1: Schematic cocoon shape (test pattern)": os.path.join(base_assets, "sample_grade_a.jpg"),
+            "Sample 2: Schematic stained shape (test pattern)": os.path.join(base_assets, "sample_stained.jpg"),
+            "Sample 3: Schematic pierced shape (test pattern)": os.path.join(base_assets, "sample_pierced.jpg"),
+            "Sample 4: Non-cocoon shape (test pattern)": os.path.join(base_assets, "sample_not_a_cocoon.jpg"),
         }
         file_path = mapping.get(choice)
         if file_path and os.path.exists(file_path):
@@ -232,8 +268,14 @@ def run_streamlit_dashboard():
         unsafe_allow_html=True,
     )
 
-    tab_inspect, tab_standards, tab_diagnostics = st.tabs(
-        ["📷 Cocoon Inspector", "📜 Sericulture Standards", "🛠️ System Diagnostics"]
+    tab_inspect, tab_batch, tab_pricing, tab_standards, tab_diagnostics = st.tabs(
+        [
+            "📷 Cocoon Inspector",
+            "🧺 Batch Lot Grading",
+            "💰 Market Price Estimator",
+            "📜 Sericulture Standards",
+            "🛠️ System Diagnostics",
+        ]
     )
 
 
@@ -311,21 +353,21 @@ def run_streamlit_dashboard():
                 session_key = st.session_state.get("api_key", "").strip()
                 effective_key = user_api_key or session_key
 
-                if not effective_key or effective_key == "your_gemini_api_key_here":
+                if not effective_key or effective_key == "your_sarvam_api_key_here":
                     st.warning("⚠️ Multimodal AI service is not yet configured.")
                     st.markdown(
                         """
-                        To analyze this cocoon photograph, SilkCocoon AI connects to Google's Multimodal Vision AI.
+                        To analyze this cocoon photograph, SilkCocoon AI connects to Sarvam AI's multimodal vision model.
 
-                        You can get a **100% free Gemini API key** in 30 seconds (no credit card required).
+                        You can get an API key from your Sarvam dashboard in a couple of minutes.
                         """
                     )
 
                     st.markdown("#### 🔑 Activate AI Vision Engine")
                     direct_key_input = st.text_input(
-                        "Paste your Gemini API Key below:",
+                        "Paste your Sarvam API Key below:",
                         type="password",
-                        placeholder="AIzaSy...",
+                        placeholder="sk_...",
                         help="Your key is kept safe and used only for evaluating your uploaded photo.",
                     )
 
@@ -333,7 +375,7 @@ def run_streamlit_dashboard():
                     with col_k1:
                         save_env_choice = st.checkbox("Remember key on this computer (save to `.env`)", value=True)
                     with col_k2:
-                        st.caption("[👉 Get Free Key at Google AI Studio](https://aistudio.google.com/app/apikey)")
+                        st.caption("[👉 Get your Sarvam API key](https://dashboard.sarvam.ai)")
 
                     if st.button("🚀 Activate & Run Analysis", type="primary", use_container_width=True):
                         if direct_key_input and direct_key_input.strip():
@@ -343,19 +385,19 @@ def run_streamlit_dashboard():
                                 try:
                                     env_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
                                     with open(env_file_path, "w", encoding="utf-8") as f:
-                                        f.write(f"GEMINI_API_KEY={clean_k}\nGEMINI_MODEL=gemini-1.5-flash\nMAX_UPLOAD_SIZE_MB=10\n")
+                                        f.write(f"SARVAM_API_KEY={clean_k}\nSARVAM_MODEL={selected_model}\nMAX_UPLOAD_SIZE_MB=10\n")
                                 except Exception:
                                     pass
                             st.rerun()
                         else:
-                            st.error("Please paste your Gemini API Key in the box above.")
+                            st.error("Please paste your Sarvam API Key in the box above.")
 
-                    with st.expander("❓ How to get your free Gemini API Key (3 Quick Steps)"):
+                    with st.expander("❓ How to get your Sarvam API Key (3 Quick Steps)"):
                         st.markdown(
                             """
-                            1. Visit **[Google AI Studio](https://aistudio.google.com/app/apikey)** and sign in with any Google account.
-                            2. Click the blue **'Create API key'** button (select 'Create in new project').
-                            3. Copy the key (starts with `AIzaSy...`) and paste it into the box above!
+                            1. Visit the **[Sarvam dashboard](https://dashboard.sarvam.ai)** and sign in.
+                            2. Create an API subscription key for your workspace and copy it.
+                            3. Paste it above. Vision uses the `gemma4` model, which is in beta — request access from Sarvam if it is not enabled for your key.
                             """
                         )
                     st.stop()
@@ -366,7 +408,7 @@ def run_streamlit_dashboard():
                 if analyze_clicked:
                     with st.spinner("Analyzing cocoon visual features using Multimodal AI..."):
                         # Step 1: Call Multimodal Vision AI
-                        success, ai_response, error_msg = analyze_cocoon_image_with_gemini(
+                        success, ai_response, error_msg = analyze_cocoon_image(
                             image=valid_img_obj,
                             api_key=effective_key,
                             model_name=selected_model,
@@ -466,6 +508,37 @@ def run_streamlit_dashboard():
                             for rec in res_dict.get("recommendations", []):
                                 st.write(f"💡 {rec}")
 
+                        # Market value estimate for this single sample
+                        st.markdown("#### 💰 Estimated Market Value")
+                        st.caption(
+                            "Indicative benchmark only. Adjust the weight to your sample and verify "
+                            "against your local mandi / Sericulture Department rate before trading."
+                        )
+                        wcol1, wcol2 = st.columns(2)
+                        with wcol1:
+                            sample_weight = st.number_input(
+                                "Weight of this sample (kg):",
+                                min_value=0.1, max_value=1000.0, value=1.0, step=0.1,
+                                key="single_weight",
+                            )
+                        with wcol2:
+                            single_override = st.number_input(
+                                "Override rate (₹/kg, 0 = use benchmark):",
+                                min_value=0.0, value=0.0, step=10.0,
+                                key="single_override",
+                            )
+                        single_est = estimate_single_grade(
+                            grade=grade,
+                            color_type=res_dict.get("color_type", "Unknown"),
+                            weight_kg=sample_weight,
+                            rate_override=(single_override if single_override > 0 else None),
+                        )
+                        sv1, sv2 = st.columns(2)
+                        with sv1:
+                            st.metric("Rate applied", f"₹{single_est.average_rate_per_kg:,.0f} / kg")
+                        with sv2:
+                            st.metric("Indicative value", f"₹{single_est.total_value:,.0f}")
+
                         # Download Report Option
                         report_json = json.dumps(res_dict, indent=2)
                         st.download_button(
@@ -477,7 +550,202 @@ def run_streamlit_dashboard():
 
 
     # ---------------------------------------------------------
-    # TAB 2: SERICULTURE STANDARDS
+    # TAB 2: BATCH LOT GRADING
+    # ---------------------------------------------------------
+    with tab_batch:
+        st.subheader("🧺 Batch Lot Grading")
+        st.markdown(
+            "Upload several cocoon photographs to grade an entire lot at once. Each photo is "
+            "graded independently, then rolled up into a single auditable lot report."
+        )
+
+        batch_files = st.file_uploader(
+            "Upload multiple cocoon photographs:",
+            type=["jpg", "jpeg", "png", "webp"],
+            accept_multiple_files=True,
+            help="Upload several photos. Invalid or non-cocoon images are flagged, never scored.",
+        )
+
+        bcol1, bcol2 = st.columns(2)
+        with bcol1:
+            default_batch_weight = st.number_input(
+                "Default weight per photo (kg):",
+                min_value=0.1, max_value=1000.0, value=1.0, step=0.1,
+                help="Used for the weighted average score and the lot valuation.",
+            )
+        with bcol2:
+            batch_override = st.number_input(
+                "Flat rate override (₹/kg, applies to every grade; 0 = use benchmark):",
+                min_value=0.0, value=0.0, step=10.0,
+                help="Set this only if your local mandi quotes a single rate for the whole lot.",
+            )
+
+        if batch_files:
+            st.caption(f"{len(batch_files)} photo(s) queued for grading.")
+            if st.button("🚀 Grade Entire Lot", type="primary", use_container_width=True):
+                effective_key_b = user_api_key or st.session_state.get("api_key", "")
+                if not effective_key_b or effective_key_b == "your_sarvam_api_key_here":
+                    st.error("❌ Configure your Sarvam API key in the sidebar before batch grading.")
+                else:
+                    entries = []
+                    progress = st.progress(0.0, text="Grading lot...")
+                    for i, bf in enumerate(batch_files):
+                        raw_bytes = bf.getvalue()
+                        ok, msg, img_obj = validate_image_bytes(raw_bytes, max_size_mb=10)
+                        if not ok:
+                            entries.append({"name": bf.name, "result": {}, "weight_kg": default_batch_weight, "error": msg})
+                        else:
+                            success, ai_resp, err = analyze_cocoon_image(
+                                image=img_obj,
+                                api_key=effective_key_b,
+                                model_name=selected_model,
+                            )
+                            if not success:
+                                entries.append({"name": bf.name, "result": {}, "weight_kg": default_batch_weight, "error": err})
+                            else:
+                                res = calculate_cocoon_grade(ai_resp)
+                                entries.append({"name": bf.name, "result": res.to_dict(), "weight_kg": default_batch_weight})
+                        progress.progress((i + 1) / len(batch_files), text=f"Graded {i + 1}/{len(batch_files)}")
+                    st.session_state["batch_report"] = build_batch_report(entries)
+                    st.session_state["batch_weight"] = default_batch_weight
+                    st.session_state["batch_override"] = batch_override
+                    progress.empty()
+                    st.success("✅ Lot grading complete.")
+
+        if "batch_report" in st.session_state:
+            rep = st.session_state["batch_report"]
+            st.markdown("---")
+            st.markdown("#### 📊 Lot Summary")
+
+            m1, m2, m3, m4 = st.columns(4)
+            with m1:
+                st.metric("Photos graded", f"{rep.graded_count} / {rep.total_images}")
+            with m2:
+                st.metric("Avg score", f"{rep.average_score}" if rep.average_score is not None else "—")
+            with m3:
+                st.metric("Weighted avg score", f"{rep.weighted_average_score}" if rep.weighted_average_score is not None else "—")
+            with m4:
+                st.metric("Manual review", rep.manual_review_count)
+
+            if rep.error_count:
+                st.warning(f"{rep.error_count} photo(s) could not be analysed (see the table below).")
+
+            if rep.grade_counts:
+                st.markdown("**Grade distribution:**")
+                st.bar_chart(rep.grade_counts)
+
+            if rep.defect_frequency:
+                st.markdown("**Defect frequency across the lot:**")
+                st.bar_chart(rep.defect_frequency)
+
+            st.markdown("#### 📋 Per-Photo Results")
+            st.dataframe(rep.items, use_container_width=True)
+
+            st.info(f"**Lot recommendation:** {rep.lot_recommendation}")
+
+            # Indicative lot valuation
+            price_items = [
+                {
+                    "grade": it.get("grade", "Manual Review"),
+                    "color_type": it.get("color_type", "Unknown"),
+                    "weight_kg": it.get("weight_kg", 0) or st.session_state.get("batch_weight", 1.0),
+                }
+                for it in rep.items
+                if it.get("status") != "ERROR" and str(it.get("grade", "")).strip().lower() != "error"
+            ]
+            lot_override = st.session_state.get("batch_override", 0.0)
+            lot_est = estimate_lot_value(
+                price_items,
+                rate_override=(lot_override if lot_override and lot_override > 0 else None),
+            )
+            st.markdown("#### 💰 Indicative Lot Value")
+            v1, v2, v3 = st.columns(3)
+            with v1:
+                st.metric("Total weight", f"{lot_est.total_weight_kg:,.1f} kg")
+            with v2:
+                st.metric("Average rate", f"₹{lot_est.average_rate_per_kg:,.0f} / kg")
+            with v3:
+                st.metric("Estimated lot value", f"₹{lot_est.total_value:,.0f}")
+            st.caption(
+                "Indicative benchmark only. Verify against your local mandi / Sericulture "
+                "Department daily rate before trading."
+            )
+
+            st.download_button(
+                label="📥 Download Lot Report (CSV)",
+                data=batch_report_to_csv(rep),
+                file_name="SilkCocoon_Lot_Report.csv",
+                mime="text/csv",
+            )
+            st.download_button(
+                label="📥 Download Lot Report (JSON)",
+                data=json.dumps(rep.to_dict(), indent=2),
+                file_name="SilkCocoon_Lot_Report.json",
+                mime="application/json",
+            )
+
+
+    # ---------------------------------------------------------
+    # TAB 3: MARKET PRICE ESTIMATOR
+    # ---------------------------------------------------------
+    with tab_pricing:
+        st.subheader("💰 Market Price Estimator")
+        st.markdown(
+            "Convert an audited cocoon grade into an indicative market value in rupees. "
+            "The rates below are transparent benchmark bands you can override with your "
+            "local mandi rate."
+        )
+
+        pcol1, pcol2 = st.columns(2)
+        with pcol1:
+            p_grade = st.selectbox("Grade:", ["Grade A", "Grade B", "Grade C", "Reject"], index=0)
+            p_color = st.selectbox("Colour / race:", list(COLOR_MULTIPLIERS.keys()), index=0)
+            p_weight = st.number_input("Lot weight (kg):", min_value=0.1, max_value=100000.0, value=10.0, step=0.5)
+        with pcol2:
+            p_override = st.number_input(
+                "Override rate (₹/kg, 0 = use benchmark):",
+                min_value=0.0, value=0.0, step=10.0,
+                help="Enter the exact rate from today's local cocoon market to override the benchmark.",
+            )
+            p_moisture = st.number_input(
+                "Moisture content (%):", min_value=0.0, max_value=40.0, value=0.0, step=0.5,
+                help="Above 12% a drying/weight-risk discount is applied to the price.",
+            )
+
+        p_est = estimate_lot_value(
+            [{"grade": p_grade, "color_type": p_color, "weight_kg": p_weight}],
+            rate_override=(p_override if p_override > 0 else None),
+            moisture_pct=p_moisture,
+        )
+
+        e1, e2, e3 = st.columns(3)
+        with e1:
+            st.metric("Rate applied", f"₹{p_est.average_rate_per_kg:,.0f} / kg")
+        with e2:
+            st.metric("Estimated value", f"₹{p_est.total_value:,.0f}")
+        with e3:
+            st.metric("Moisture discount", f"{p_est.moisture_discount_pct:,.1f} %")
+
+        st.caption(
+            "Indicative benchmark only. Cocoon prices move daily with season, race and local "
+            "demand — always confirm against the official local market rate before trading."
+        )
+
+        with st.expander("📖 Benchmark rate card used by this estimator"):
+            st.markdown("**Base rate by grade (₹/kg, before colour adjustment):**")
+            st.json(BASE_PRICE_PER_KG)
+            st.markdown("**Colour / race multiplier:**")
+            st.json(COLOR_MULTIPLIERS)
+            st.markdown("**Effective rate by grade × colour (₹/kg):**")
+            rate_grid = {
+                grade: {color: grade_rate_per_kg(grade, color) for color in COLOR_MULTIPLIERS}
+                for grade in BASE_PRICE_PER_KG
+            }
+            st.dataframe(rate_grid, use_container_width=True)
+
+
+    # ---------------------------------------------------------
+    # TAB 4: SERICULTURE STANDARDS
     # ---------------------------------------------------------
     with tab_standards:
         st.subheader("📜 Sericulture Cocoon Quality Standards")
@@ -527,7 +795,7 @@ def run_streamlit_dashboard():
 
 
     # ---------------------------------------------------------
-    # TAB 3: SYSTEM DIAGNOSTICS & AUDIT TRAIL
+    # TAB 5: SYSTEM DIAGNOSTICS & AUDIT TRAIL
     # ---------------------------------------------------------
     with tab_diagnostics:
         st.subheader("🛠️ Technical Diagnostics & System Health")
@@ -536,7 +804,7 @@ def run_streamlit_dashboard():
         with d_col1:
             st.write("**Environment Status:**")
             st.write(f"- Python Runtime: 3.13")
-            st.write(f"- Multimodal Vision Provider: Google Gemini API")
+            st.write(f"- Multimodal Vision Provider: Sarvam AI (Chat Completion V2)")
             st.write(f"- Active Model: `{selected_model}`")
             st.write(f"- API Key Configured: `{'Yes (Valid length)' if user_api_key else 'No'}`")
             st.write(f"- In-Memory Image Buffer: Active (Zero disk writes)")

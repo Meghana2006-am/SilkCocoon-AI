@@ -8,8 +8,11 @@ assessment and commercial grading using Multimodal AI.
 import os
 import json
 from io import BytesIO
-import streamlit as st
 from PIL import Image
+try:
+    import streamlit as st
+except ImportError:
+    st = None
 from dotenv import load_dotenv
 
 # Load local environment variables from .env if present
@@ -819,11 +822,11 @@ def run_streamlit_dashboard():
 
 
 # Launch Streamlit dashboard when executed via streamlit run
-if hasattr(st, 'runtime') and st.runtime.exists():
+if st is not None and hasattr(st, 'runtime') and st.runtime.exists():
     run_streamlit_dashboard()
 
 if __name__ == '__main__':
-    if hasattr(st, 'runtime') and st.runtime.exists():
+    if st is not None and hasattr(st, 'runtime') and st.runtime.exists():
         run_streamlit_dashboard()
     else:
         port = int(os.getenv('PORT', 5000))

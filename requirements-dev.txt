@@ -1,0 +1,4 @@
+# SilkCocoon AI - Local Development & Streamlit Dashboard Dependencies
+-r requirements.txt
+streamlit>=1.35.0
+pytest>=8.0.0

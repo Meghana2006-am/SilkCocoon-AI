@@ -193,16 +193,22 @@ with st.sidebar:
 
     st.markdown("---")
     st.subheader("🧪 Demo Sample Gallery")
-    st.write("Test grading instantly without needing your own photos:")
+    st.write("Exercise the pipeline without needing your own photos:")
+    st.caption(
+        "⚠️ These are **schematic test patterns** — simple drawn shapes, not photographs. "
+        "A real vision model correctly routes them to **Manual Review** rather than grading "
+        "them, which is the anti-fabrication guardrail working. Upload a real cocoon photo "
+        "to get an actual grade."
+    )
 
     sample_choice = st.radio(
         "Select a sample image:",
         options=[
             "None (Upload my own)",
-            "Sample 1: Grade A Bivoltine",
-            "Sample 2: Stained Cocoon",
-            "Sample 3: Uzifly Pierced Cocoon",
-            "Sample 4: Non-Cocoon (Out of Domain)",
+            "Sample 1: Schematic cocoon shape (test pattern)",
+            "Sample 2: Schematic stained shape (test pattern)",
+            "Sample 3: Schematic pierced shape (test pattern)",
+            "Sample 4: Non-cocoon shape (test pattern)",
         ],
         index=0,
     )
@@ -227,10 +233,10 @@ with st.sidebar:
 def get_sample_image_bytes(choice: str) -> BytesIO:
     base_assets = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
     mapping = {
-        "Sample 1: Grade A Bivoltine": os.path.join(base_assets, "sample_grade_a.jpg"),
-        "Sample 2: Stained Cocoon": os.path.join(base_assets, "sample_stained.jpg"),
-        "Sample 3: Uzifly Pierced Cocoon": os.path.join(base_assets, "sample_pierced.jpg"),
-        "Sample 4: Non-Cocoon (Out of Domain)": os.path.join(base_assets, "sample_not_a_cocoon.jpg"),
+        "Sample 1: Schematic cocoon shape (test pattern)": os.path.join(base_assets, "sample_grade_a.jpg"),
+        "Sample 2: Schematic stained shape (test pattern)": os.path.join(base_assets, "sample_stained.jpg"),
+        "Sample 3: Schematic pierced shape (test pattern)": os.path.join(base_assets, "sample_pierced.jpg"),
+        "Sample 4: Non-cocoon shape (test pattern)": os.path.join(base_assets, "sample_not_a_cocoon.jpg"),
     }
     file_path = mapping.get(choice)
     if file_path and os.path.exists(file_path):

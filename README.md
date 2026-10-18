@@ -38,7 +38,7 @@ In traditional silk-producing regions (e.g., Karnataka, Andhra Pradesh, Tamil Na
 - **Anti-Fabrication Guardrail (Manual Review):** Refuses to guess or generate random numbers if an image is blurry, poorly lit, or does not contain cocoons.
 - **🧺 Batch Lot Grading (NEW):** Upload many cocoon photos at once. Each photo is graded independently, then rolled up into one lot report with grade distribution, weighted average score, defect frequency, and a lot recommendation. Export as CSV or JSON.
 - **💰 Market Price Estimator (NEW):** Converts a grade into an indicative ₹/kg rate and lot value, with a colour/race multiplier, an optional moisture discount, and a user rate override for the local mandi price.
-- **One-Click Test Gallery:** Pre-loaded with Grade A, Stained, Pierced, and Non-Cocoon sample images for instant evaluation.
+- **One-Click Test Gallery:** Four schematic test patterns pre-loaded for exercising image validation and the manual-review guardrail offline. They are simple drawings, not photographs, so a real model correctly routes them to **Manual Review** — upload a real photo for an actual grade.
 - **Certificate Export:** Download an inspection audit report in standard JSON format.
 
 ---
@@ -179,7 +179,8 @@ The rates in `market.py` are **indicative benchmark values** compiled for demons
 - **Shell Thickness / Floss Density:** A 2D photograph evaluates visible surface texture and firmness; it cannot weigh individual cocoons or calculate precise shell ratio without a physical balance scale.
 - **Inner Melted Pupa Stains:** While exterior urine and disease stains are readily detected, mild internal pupal melting without shell penetration requires candling (light illumination).
 - **Network Dependency:** Cloud inference requires an active internet connection.
-- **Beta Vision Route:** The image-capable Sarvam model (`gemma4`) is served on a beta endpoint that must be enabled per API key.
+- **Schematic Demo Samples:** The bundled gallery images are simple drawn test patterns, not photographs, so the vision model correctly declines to grade them. Real grading requires a real cocoon photograph.
+- **Beta Vision Route:** The image-capable Sarvam model (`gemma4`) is served on the Chat Completion V2 (beta) route, enabled per API key. Verified working with a valid key.
 
 ---
 

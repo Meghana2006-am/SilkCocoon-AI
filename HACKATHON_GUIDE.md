@@ -63,30 +63,27 @@ Follow this 2-minute flow during your hackathon demo:
 ### Step 1: Open SilkCocoon AI
 Show the clean dashboard on your laptop or mobile view. Point out the **Security & Privacy banner** explaining that images are processed in-memory and never permanently stored.
 
-### Step 2: Test Guardrail 1 — Non-Cocoon Image (Honest AI)
-1. In the sidebar, select **"Sample 4: Non-Cocoon (Out of Domain)"** (or upload an apple/cup).
+### Step 2: Test the Guardrail — Schematic Non-Cocoon Pattern (Honest AI)
+1. In the sidebar, select **"Sample 4: Non-cocoon shape (test pattern)"**.
 2. Click **"Analyze Cocoon Quality"**.
 3. **Show the judges:** The application flags `⚠️ Manual Review Recommended` with the reason *"The uploaded image does not appear to contain silkworm cocoons."*
 4. **Key pitch:** *"Notice that our AI did not make up a fake score. It refused to speculate because truthfulness matters in agricultural commerce."*
 
-### Step 3: Test Defect Detection — Uzifly Pierced Cocoon
-1. In the sidebar, select **"Sample 3: Uzifly Pierced Cocoon"**.
-2. Click **"Analyze Cocoon Quality"**.
-3. **Show the judges:**
-   - Grade: **Reject** (Score: < 35).
-   - Defect flagged: `pierced` (fatal parasite damage).
-   - Commercial recommendation: *"Reject from Reeling Auction. Divert to Spun Silk Waste."*
-4. **Key pitch:** *"A human inspector could easily miss that pinhole, but our vision pipeline caught it immediately, saving a commercial reeler thousands in broken filaments."*
+### Step 3: The Same Guardrail Applies to the Other Patterns
+The bundled samples 1-3 are deliberately **schematic test patterns** (simple drawn shapes), not photographs. Select any of them and the vision model will *correctly* decline to grade them, routing to **Manual Review**.
+- **Key pitch:** *"We ship these patterns to prove the guardrail: even when we hand the model a shape that looks roughly like a cocoon, it refuses to invent a grade. A drawing is not evidence."*
+- They are useful for testing image validation, in-memory handling and the manual-review path **without spending API credits on real photos**.
 
-### Step 4: Test Grade A Premium Cocoon
-1. In the sidebar, select **"Sample 1: Grade A Bivoltine"** (or take a photo of a clean white cocoon).
+### Step 4: Test Real Grading — Upload a Real Photograph
+1. In the sidebar, select **"None (Upload my own)"** and upload a real cocoon photo (a phone photo of a handful of cocoons on a plain tray works well).
 2. Click **"Analyze Cocoon Quality"**.
-3. **Show the judges:**
-   - Grade: **Grade A** (Score: 90+/100).
-   - Sub-metrics: Compactness 95/100, Cleanliness 94/100, Shape 92/100.
-   - Estimated Reelability: `>80%`.
-   - Commercial Action: *"Eligible for Premium Automatic Reeling Auction. Top Market Price."*
+3. **Show the judges:** a real grade with sub-metrics, defect list, reelability, and the **estimated ₹ market value** for the sample weight.
+   - Example (a real photo of white cocoons in drying trays): **Grade B**, Score 70, defect `stained`, about **₹5,720 per 10 kg**.
+   - Example (a single cocoon with heavy surface floss): **Reject**, Score 38, defect `flimsy`.
 4. Show the **"Download Inspection Certificate (JSON)"** button.
+5. **Key pitch:** *"On real photographs this is a genuine inspection, and our scoring math is fully transparent and auditable."*
+
+> **Note:** the four bundled images are schematic test patterns, not photographs. Use them to demo the guardrail (Steps 2-3); use a real photo for Step 4.
 
 ---
 

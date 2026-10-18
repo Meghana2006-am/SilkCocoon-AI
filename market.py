@@ -38,6 +38,9 @@ COLOR_MULTIPLIERS: Dict[str, float] = {
     "Unknown": 1.00,
 }
 
+# Grades/states that must never be priced or counted as a lot line.
+NON_GRADABLE_GRADES = {"", "manual review", "error", "n/a", "unknown", "none"}
+
 # Above this moisture percentage a drying/weight-risk discount is applied.
 ALLOWED_MOISTURE_PCT = 12.0
 MOISTURE_DISCOUNT_PER_PCT = 0.01  # 1% price reduction per extra % moisture
@@ -124,10 +127,16 @@ def estimate_lot_value(
         except (TypeError, ValueError):
             weight = 0.0
 
-        if weight <= 0 or grade in ("", "Manual Review"):
+        # Skip non-gradable lines (manual review, errors, blank grades) so their
+        # weight is never counted toward the lot total.
+        if weight <= 0 or grade.strip().lower() in NON_GRADABLE_GRADES:
             continue
 
         rate = grade_rate_per_kg(grade, color, base_rates=base_rates, rate_override=rate_override)
+        # An unknown grade with no benchmark and no override has no price: skip it
+        # rather than counting its weight at zero value.
+        if rate <= 0 and rate_override is None:
+            continue
         value = rate * weight * (1 - discount)
 
         lines.append(LotLine(

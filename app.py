@@ -555,8 +555,9 @@ with tab_batch:
         )
     with bcol2:
         batch_override = st.number_input(
-            "Override rate (₹/kg, 0 = use benchmark):",
+            "Flat rate override (₹/kg, applies to every grade; 0 = use benchmark):",
             min_value=0.0, value=0.0, step=10.0,
+            help="Set this only if your local mandi quotes a single rate for the whole lot.",
         )
 
     if batch_files:
@@ -630,7 +631,7 @@ with tab_batch:
                 "weight_kg": it.get("weight_kg", 0) or st.session_state.get("batch_weight", 1.0),
             }
             for it in rep.items
-            if it.get("status") != "Error"
+            if it.get("status") != "ERROR" and str(it.get("grade", "")).strip().lower() != "error"
         ]
         lot_override = st.session_state.get("batch_override", 0.0)
         lot_est = estimate_lot_value(

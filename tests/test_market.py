@@ -63,3 +63,15 @@ def test_lot_multi_grade_totals():
         + grade_rate_per_kg("Grade B", "White (Bivoltine)") * 20,
         2,
     )
+
+
+def test_error_and_unknown_grades_do_not_inflate_lot_weight():
+    """Non-gradable / unpriced lines must not count toward weight or skew the rate."""
+    est = estimate_lot_value([
+        {"grade": "Grade A", "color_type": "White (Bivoltine)", "weight_kg": 2.0},
+        {"grade": "Error", "color_type": "Unknown", "weight_kg": 5.0},
+        {"grade": "Manual Review", "color_type": "Unknown", "weight_kg": 3.0},
+        {"grade": "Bogus", "color_type": "Unknown", "weight_kg": 4.0},
+    ])
+    assert est.total_weight_kg == 2.0
+    assert est.average_rate_per_kg == grade_rate_per_kg("Grade A", "White (Bivoltine)")

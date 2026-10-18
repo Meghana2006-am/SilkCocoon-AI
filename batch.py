@@ -78,6 +78,8 @@ def build_batch_report(entries: List[Dict[str, Any]]) -> BatchReport:
     items: List[BatchItem] = []
     grade_counts: Dict[str, int] = {}
     defect_frequency: Dict[str, int] = {}
+    # Entries in these states must never be priced or weighted as a graded lot line.
+    non_gradable = {"", "manual review", "error", "n/a", "unknown", "none"}
 
     scored: List[float] = []
     weighted_sum = 0.0
@@ -90,40 +92,54 @@ def build_batch_report(entries: List[Dict[str, Any]]) -> BatchReport:
             weight = float(entry.get("weight_kg", 0) or 0)
         except (TypeError, ValueError):
             weight = 0.0
-        total_weight += weight
 
         err = entry.get("error") or ""
         result = entry.get("result") or {}
 
+        # A failed analysis is an error line, never a graded line.
         if err and not result:
             report.error_count += 1
-            items.append(BatchItem(name=name, grade="Error", score=None,
+            items.append(BatchItem(name=name, grade="Error", score=None, status="ERROR",
                                    color_type="Unknown", weight_kg=weight, error=err))
             continue
 
         grade = str(result.get("grade", "Manual Review"))
         status = str(result.get("status", ""))
         score = result.get("overall_score")
+        grade_key = grade.strip().lower()
+
+        # Decide the line's true state. Anything without a score, or in a
+        # non-gradable state, must never be counted as a graded lot line.
+        if grade_key == "error":
+            line_status = "ERROR"
+        elif score is None or status == "MANUAL_REVIEW_REQUIRED" or grade_key in non_gradable:
+            line_status = "MANUAL_REVIEW_REQUIRED"
+        else:
+            line_status = "SUCCESS"
+
         color = str(result.get("color_type", "Unknown"))
         defects = [str(d).lower() for d in (result.get("defects_detected") or [])]
 
         for d in defects:
             defect_frequency[d] = defect_frequency.get(d, 0) + 1
 
-        grade_counts[grade] = grade_counts.get(grade, 0) + 1
-
-        if status == "MANUAL_REVIEW_REQUIRED" or score is None:
-            report.manual_review_count += 1
+        if line_status == "ERROR":
+            report.error_count += 1
         else:
-            report.graded_count += 1
-            scored.append(float(score))
-            effective_weight = weight if weight > 0 else 1.0
-            weighted_sum += float(score) * effective_weight
-            weight_total += effective_weight
+            grade_counts[grade] = grade_counts.get(grade, 0) + 1
+            if line_status == "MANUAL_REVIEW_REQUIRED":
+                report.manual_review_count += 1
+            else:
+                report.graded_count += 1
+                total_weight += weight  # only graded weight counts toward the lot
+                scored.append(float(score))
+                effective_weight = weight if weight > 0 else 1.0
+                weighted_sum += float(score) * effective_weight
+                weight_total += effective_weight
 
         items.append(BatchItem(
             name=name, grade=grade, score=(round(float(score), 1) if score is not None else None),
-            color_type=color, defects=defects, status=status, weight_kg=weight, error="",
+            color_type=color, defects=defects, status=line_status, weight_kg=weight, error="",
         ))
 
     report.grade_counts = grade_counts

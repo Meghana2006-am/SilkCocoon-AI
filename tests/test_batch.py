@@ -82,3 +82,27 @@ def test_csv_export_contains_rows_and_summary():
     assert "Sample,Grade,Score" in csv_text
     assert "SUMMARY" in csv_text
     assert "Grade A" in csv_text
+
+
+def test_error_entry_gets_error_status_not_success():
+    """A failed analysis must be marked ERROR, never a graded SUCCESS line."""
+    rep = build_batch_report([{"name": "bad.jpg", "result": {}, "weight_kg": 2.0, "error": "Corrupted image"}])
+    assert rep.items[0]["status"] == "ERROR"
+    assert rep.items[0]["grade"] == "Error"
+    assert rep.error_count == 1
+
+
+def test_graded_weight_excludes_manual_review_and_errors():
+    """Only genuinely graded lines contribute weight to the lot."""
+    rep = build_batch_report([
+        _res("Grade A", 90),  # weight 1.0, graded
+        {"name": "m.jpg", "result": {"grade": "Manual Review", "overall_score": None,
+                                     "status": "MANUAL_REVIEW_REQUIRED", "defects_detected": [],
+                                     "color_type": "Unknown"}, "weight_kg": 3.0},
+        {"name": "bad.jpg", "result": {}, "weight_kg": 5.0, "error": "Corrupted image"},
+    ])
+    assert rep.total_weight_kg == 1.0
+    assert rep.graded_count == 1
+    assert rep.manual_review_count == 1
+    assert rep.error_count == 1
+    assert "Error" not in rep.grade_counts

@@ -147,12 +147,17 @@ HTML_LANDING_PAGE = """<!DOCTYPE html>
 
 
 @app.route("/", methods=["GET"])
+@app.route("/api", methods=["GET"])
+@app.route("/api/", methods=["GET"])
+@app.route("/api/index", methods=["GET"])
+@app.route("/api/index.py", methods=["GET"])
 def index():
     """Serves the root dashboard / landing overview."""
     return render_template_string(HTML_LANDING_PAGE)
 
 
 @app.route("/api/health", methods=["GET"])
+@app.route("/health", methods=["GET"])
 def health_check():
     """Checks backend server health and Gemini configuration status."""
     has_key = bool(get_gemini_client())
@@ -166,6 +171,7 @@ def health_check():
 
 
 @app.route("/api/advisory", methods=["POST"])
+@app.route("/advisory", methods=["POST"])
 def advisory_endpoint():
     """
     Main Gemini Advisory Endpoint.
@@ -186,6 +192,7 @@ def advisory_endpoint():
 
 
 @app.route("/api/chat", methods=["POST"])
+@app.route("/chat", methods=["POST"])
 def chat_endpoint():
     """Farmer conversational assistant endpoint."""
     data = request.get_json(silent=True) or {}
@@ -210,6 +217,7 @@ def chat_endpoint():
 
 
 @app.route("/api/analyze", methods=["POST"])
+@app.route("/analyze", methods=["POST"])
 def analyze_endpoint():
     """
     Analyzes an uploaded cocoon image and returns grading and defect metrics.
@@ -251,6 +259,7 @@ def analyze_endpoint():
 
 
 @app.route("/api/standards", methods=["GET"])
+@app.route("/standards", methods=["GET"])
 def standards_endpoint():
     """Returns sericulture defect penalty weights and guidelines."""
     return jsonify({
@@ -265,10 +274,29 @@ def standards_endpoint():
 
 
 @app.route("/api/test-gemini", methods=["GET"])
+@app.route("/test-gemini", methods=["GET"])
 def test_gemini_endpoint():
     """Verifies live Gemini API status."""
     res = test_gemini_connection()
     return jsonify(res)
+
+
+@app.errorhandler(404)
+def handle_404(e):
+    """Fallback handler so any unmatched GET route returns the landing page."""
+    if request.path.startswith("/api/"):
+        return jsonify({
+            "error": "Endpoint not found",
+            "requested_path": request.path,
+            "available_endpoints": [
+                "/api/health",
+                "/api/advisory",
+                "/api/chat",
+                "/api/analyze",
+                "/api/standards"
+            ]
+        }), 404
+    return render_template_string(HTML_LANDING_PAGE), 200
 
 
 # Vercel Serverless requires WSGI handler exposed as 'app'

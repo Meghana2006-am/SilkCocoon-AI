@@ -277,22 +277,90 @@ def resolve_model_name(api_key: Optional[str] = None, requested: Optional[str] =
     return requested or DEFAULT_MODEL, ""
 
 
+def analyze_with_gemini_rest(
+    image: Image.Image,
+    api_key: str,
+    model_name: Optional[str] = None
+) -> Tuple[bool, Dict[str, Any], str]:
+    """Invokes Google Gemini Vision model via official REST endpoint."""
+    effective_model = model_name or os.getenv("GEMINI_MODEL", "gemini-1.5-flash").strip()
+    buffer = io.BytesIO()
+    rgb = image.convert("RGB") if image.mode != "RGB" else image
+    rgb.save(buffer, format="JPEG", quality=85)
+    b64_image = base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{effective_model}:generateContent?key={api_key}"
+    payload = {
+        "contents": [
+            {
+                "parts": [
+                    {"text": SERICULTURE_VISION_PROMPT},
+                    {
+                        "inline_data": {
+                            "mime_type": "image/jpeg",
+                            "data": b64_image
+                        }
+                    }
+                ]
+            }
+        ],
+        "generationConfig": {
+            "temperature": 0.2,
+            "topP": 0.9
+        }
+    }
+
+    try:
+        resp = requests.post(url, json=payload, timeout=REQUEST_TIMEOUT_SECONDS)
+        if resp.status_code != 200:
+            err_msg = ""
+            try:
+                err_msg = resp.json().get("error", {}).get("message", "")
+            except Exception:
+                err_msg = resp.text
+            return False, {}, f"Google Gemini Error (HTTP {resp.status_code}): {err_msg}"
+
+        body = resp.json()
+        candidates = body.get("candidates", [])
+        if not candidates:
+            return False, {}, "Gemini AI returned no response candidates."
+
+        parts = candidates[0].get("content", {}).get("parts", [])
+        raw_text = "".join([p.get("text", "") for p in parts])
+        clean_text = clean_json_response(raw_text)
+        return parse_and_validate_ai_json(clean_text)
+
+    except requests.exceptions.Timeout:
+        return False, {}, "The Gemini AI request timed out. Please check your network and retry."
+    except Exception as exc:
+        return False, {}, f"Could not reach Google Gemini AI service: {exc}"
+
+
 def analyze_cocoon_image(
     image: Image.Image,
     api_key: Optional[str] = None,
     model_name: Optional[str] = None,
 ) -> Tuple[bool, Dict[str, Any], str]:
     """
-    Invokes the Sarvam multimodal Vision model to inspect the cocoon image.
+    Invokes multimodal Vision model (Google Gemini or Sarvam AI) to inspect the cocoon image.
     Never fabricates responses: if the API key is missing or invalid, reports a clear error.
     """
-    # 1. Retrieve API Key
-    effective_key = _get_effective_key(api_key)
+    # 1. Determine key from argument or environment
+    if api_key is not None:
+        effective_key = normalize_api_key(api_key)
+    else:
+        effective_key = normalize_api_key(os.getenv("SARVAM_API_KEY", "") or os.getenv("GEMINI_API_KEY", ""))
+
+    # If key starts with AIzaSy (Google Gemini API key)
+    if effective_key and effective_key.startswith("AIzaSy"):
+        return analyze_with_gemini_rest(image, api_key=effective_key, model_name=model_name)
+
+    # Check validity for Sarvam / general unconfigured state
     if not _is_valid_key(effective_key):
         return False, {}, (
             "SARVAM_API_KEY is not configured. "
-            "Please obtain an API key from https://dashboard.sarvam.ai and add it to your "
-            ".env file or enter it in the sidebar settings."
+            "Get an API key from https://dashboard.sarvam.ai or enter your Google Gemini (AIzaSy...) "
+            "or Sarvam AI key in the API Key box above the Analyze button to inspect your photo."
         )
 
     # 2. Select Model Name (auto-resolve to an image-capable model)

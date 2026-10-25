@@ -24,6 +24,87 @@ app = Flask(__name__)
 handler = app
 CORS(app, resources={r"/*": {"origins": "*"}})
 
+# Central Silk Board (CSTRI) Benchmark evaluations for bundled demo test samples
+DEMO_SAMPLE_BENCHMARKS = {
+    "grade_a": {
+        "is_cocoon": True,
+        "evidence_sufficient": True,
+        "quality_notes": "Clean, well-formed Bivoltine cocoon sample.",
+        "cocoon_count": 1,
+        "color_type": "White (Bivoltine)",
+        "shape_uniformity_score": 94,
+        "compactness_score": 92,
+        "cleanliness_score": 96,
+        "defects_detected": [],
+        "visual_observations": [
+            "Uniform oval shape with firm, thick shell grain.",
+            "Floss is light and evenly distributed with no surface fuzz clusters.",
+            "Zero stains, discoloration, or pierced holes detected."
+        ],
+        "recommendations": [
+            "Eligible for multi-end automated reeling with high commercial recovery rate.",
+            "Store in clean, dry wooden trays with proper ventilation before mandi dispatch."
+        ]
+    },
+    "stained": {
+        "is_cocoon": True,
+        "evidence_sufficient": True,
+        "quality_notes": "Cocoon shows surface urine/moisture staining on outer shell.",
+        "cocoon_count": 1,
+        "color_type": "White (Bivoltine)",
+        "shape_uniformity_score": 75,
+        "compactness_score": 70,
+        "cleanliness_score": 52,
+        "defects_detected": ["stained"],
+        "visual_observations": [
+            "Localized yellowish stain visible across the shell body.",
+            "Weakened tensile strength expected at the stained section.",
+            "Shell body remains moderately firm without pupal melting."
+        ],
+        "recommendations": [
+            "Segregate stained cocoons before lot auction to protect overall lot grade.",
+            "Dry cocoons immediately to halt microbial degradation of the silk sericin."
+        ]
+    },
+    "pierced": {
+        "is_cocoon": True,
+        "evidence_sufficient": True,
+        "quality_notes": "Cocoon has fatal emergence hole, severing the silk bave.",
+        "cocoon_count": 1,
+        "color_type": "White (Bivoltine)",
+        "shape_uniformity_score": 60,
+        "compactness_score": 55,
+        "cleanliness_score": 65,
+        "defects_detected": ["pierced"],
+        "visual_observations": [
+            "Clean-cut circular hole detected at one end (Uzifly parasite exit or moth emergence).",
+            "Continuous filament has been severed into discontinuous fragments.",
+            "Commercial reeling is impossible for this cocoon."
+        ],
+        "recommendations": [
+            "Fatal defect (CSTRI Score: Reject). Do not mix with reeling cocoons.",
+            "Divert to dupion or hand-spun silk processing."
+        ]
+    },
+    "not_a_cocoon": {
+        "is_cocoon": False,
+        "evidence_sufficient": False,
+        "quality_notes": "Object in photograph is out-of-domain and not a silkworm cocoon.",
+        "cocoon_count": 0,
+        "color_type": "N/A",
+        "shape_uniformity_score": 0,
+        "compactness_score": 0,
+        "cleanliness_score": 0,
+        "defects_detected": [],
+        "visual_observations": [
+            "Object lacks characteristic sericin texture, fibroin grain, or silkworm cocoon structure."
+        ],
+        "recommendations": [
+            "Please upload a clear photograph of silkworm cocoons."
+        ]
+    }
+}
+
 HTML_LANDING_PAGE = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -72,7 +153,7 @@ HTML_LANDING_PAGE = """<!DOCTYPE html>
     .header {
       background: linear-gradient(135deg, #123C32 0%, #1A4D40 100%);
       color: #FFFFFF;
-      padding: 32px 36px;
+      padding: 30px 36px;
       border-radius: var(--radius-lg);
       box-shadow: var(--shadow-md);
       margin-bottom: 24px;
@@ -208,7 +289,38 @@ HTML_LANDING_PAGE = """<!DOCTYPE html>
     .card-sub {
       font-size: 13px;
       color: var(--text-muted);
-      margin-bottom: 20px;
+      margin-bottom: 18px;
+    }
+
+    /* API Key Box */
+    .api-key-box {
+      background: var(--gold-light);
+      border: 1px solid #EAD8A4;
+      border-radius: var(--radius-sm);
+      padding: 12px 14px;
+      margin-bottom: 16px;
+    }
+    .api-key-label {
+      font-size: 13px;
+      font-weight: 700;
+      color: #785A14;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+    .api-key-input {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #D5C28F;
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 13px;
+      background: #FFFFFF;
+    }
+    .api-key-input:focus {
+      outline: none;
+      border-color: var(--green-primary);
     }
 
     /* Upload Zone */
@@ -216,7 +328,7 @@ HTML_LANDING_PAGE = """<!DOCTYPE html>
       border: 2px dashed #B8C7C0;
       background: #FAFCFA;
       border-radius: var(--radius-md);
-      padding: 32px 20px;
+      padding: 28px 16px;
       text-align: center;
       cursor: pointer;
       transition: all 0.2s ease;
@@ -228,8 +340,8 @@ HTML_LANDING_PAGE = """<!DOCTYPE html>
     }
     .upload-zone input { display: none; }
     .upload-icon {
-      font-size: 42px;
-      margin-bottom: 8px;
+      font-size: 38px;
+      margin-bottom: 6px;
       display: block;
     }
 
@@ -238,12 +350,12 @@ HTML_LANDING_PAGE = """<!DOCTYPE html>
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 8px;
-      margin-bottom: 20px;
+      margin-bottom: 16px;
     }
     .sample-chip {
       background: var(--bg);
       border: 1px solid var(--border);
-      padding: 8px 12px;
+      padding: 8px 10px;
       border-radius: var(--radius-sm);
       font-size: 12px;
       font-weight: 600;
@@ -255,7 +367,7 @@ HTML_LANDING_PAGE = """<!DOCTYPE html>
       align-items: center;
       gap: 6px;
     }
-    .sample-chip:hover {
+    .sample-chip:hover, .sample-chip.active {
       background: var(--green-light);
       border-color: var(--green-border);
       color: var(--green-dark);
@@ -268,12 +380,12 @@ HTML_LANDING_PAGE = """<!DOCTYPE html>
       background: #F1F5F3;
       border-radius: var(--radius-sm);
       overflow: hidden;
-      margin-bottom: 18px;
+      margin-bottom: 16px;
       border: 1px solid var(--border);
       text-align: center;
     }
     .preview-box img {
-      max-height: 240px;
+      max-height: 220px;
       width: auto;
       max-width: 100%;
       object-fit: contain;
@@ -284,7 +396,7 @@ HTML_LANDING_PAGE = """<!DOCTYPE html>
       position: absolute;
       top: 8px;
       right: 8px;
-      background: rgba(0,0,0,0.6);
+      background: rgba(0,0,0,0.65);
       color: white;
       border: none;
       padding: 4px 10px;
@@ -375,10 +487,10 @@ HTML_LANDING_PAGE = """<!DOCTYPE html>
       display: none;
     }
     .grade-banner {
-      padding: 24px;
+      padding: 22px;
       border-radius: var(--radius-md);
       text-align: center;
-      margin-bottom: 20px;
+      margin-bottom: 18px;
       border: 2px solid;
     }
     .grade-A {
@@ -414,11 +526,11 @@ HTML_LANDING_PAGE = """<!DOCTYPE html>
       font-weight: 800;
       letter-spacing: 0.5px;
       text-transform: uppercase;
-      background: rgba(255, 255, 255, 0.8);
+      background: rgba(255, 255, 255, 0.85);
       margin-bottom: 8px;
     }
     .grade-title {
-      font-size: 32px;
+      font-size: 30px;
       font-weight: 800;
       margin-bottom: 4px;
     }
@@ -426,8 +538,8 @@ HTML_LANDING_PAGE = """<!DOCTYPE html>
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 12px;
-      font-size: 16px;
+      gap: 10px;
+      font-size: 15px;
       font-weight: 700;
     }
 
@@ -435,7 +547,7 @@ HTML_LANDING_PAGE = """<!DOCTYPE html>
     .metrics-table {
       width: 100%;
       border-collapse: collapse;
-      margin-bottom: 20px;
+      margin-bottom: 18px;
       font-size: 13px;
     }
     .metrics-table th, .metrics-table td {
@@ -454,7 +566,7 @@ HTML_LANDING_PAGE = """<!DOCTYPE html>
       border: 1px solid #EAD8A4;
       border-radius: var(--radius-sm);
       padding: 16px;
-      margin-bottom: 20px;
+      margin-bottom: 18px;
     }
     .recommendations-box h4 {
       color: #785A14;
@@ -468,6 +580,17 @@ HTML_LANDING_PAGE = """<!DOCTYPE html>
     }
     .recommendations-box li {
       margin-bottom: 4px;
+    }
+
+    .demo-notice-bar {
+      display: none;
+      background: #EBF8FF;
+      border: 1px solid #BEE3F8;
+      border-radius: var(--radius-sm);
+      padding: 10px 14px;
+      font-size: 12px;
+      color: #2B6CB0;
+      margin-bottom: 16px;
     }
 
     /* Spinner */
@@ -624,10 +747,10 @@ HTML_LANDING_PAGE = """<!DOCTYPE html>
       </div>
       <p>Automated Sericulture Cocoon Quality Inspection, Central Silk Board (CSTRI) Grading & Transparent Market Valuation.</p>
       <div class="badge-bar">
-        <span class="pill active">🟢 WSGI Active on Vercel</span>
+        <span class="pill active">🟢 Active on Vercel</span>
         <span class="pill">CSTRI Scoring Standard</span>
-        <span class="pill">Google Gemini Vision AI</span>
-        <span class="pill">Real-time Inspection</span>
+        <span class="pill">Google Gemini & Sarvam Vision</span>
+        <span class="pill">Instant Inspection</span>
       </div>
     </header>
 
@@ -636,7 +759,7 @@ HTML_LANDING_PAGE = """<!DOCTYPE html>
       <button class="tab-btn active" onclick="switchTab('tab-inspector')">📷 Cocoon Inspector</button>
       <button class="tab-btn" onclick="switchTab('tab-chat')">💬 AI Farmer Assistant</button>
       <button class="tab-btn" onclick="switchTab('tab-standards')">📜 CSTRI Standards</button>
-      <button class="tab-btn" onclick="switchTab('tab-api')">🔌 API & Settings</button>
+      <button class="tab-btn" onclick="switchTab('tab-api')">🔌 API & Docs</button>
     </nav>
 
     <!-- TAB 1: COCOON INSPECTOR -->
@@ -647,13 +770,25 @@ HTML_LANDING_PAGE = """<!DOCTYPE html>
           <div class="card-title">1. Provide Cocoon Photograph</div>
           <div class="card-sub">Upload a high-resolution photo or choose a preset test pattern.</div>
 
+          <!-- API Key Input directly in Inspector -->
+          <div class="api-key-box" id="key-container">
+            <div class="api-key-label">
+              <span>🔑 API Key (Gemini or Sarvam):</span>
+              <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color: var(--green-primary); font-size: 12px; text-decoration: underline;">Get free Google key ↗</a>
+            </div>
+            <input type="password" id="inspector-api-key" class="api-key-input" placeholder="Paste your key here (AIzaSy... / sk_...)" oninput="syncApiKey(this.value)">
+            <div style="font-size: 11px; color: #8A6D2B; margin-top: 4px;">
+              Saved in your browser. Not required for preset demo samples.
+            </div>
+          </div>
+
           <!-- Sample Presets -->
-          <div style="font-size: 12px; font-weight: 700; color: var(--text-muted); margin-bottom: 8px;">QUICK DEMO SAMPLES:</div>
+          <div style="font-size: 12px; font-weight: 700; color: var(--text-muted); margin-bottom: 8px;">QUICK DEMO PRESETS:</div>
           <div class="samples-grid">
-            <button class="sample-chip" onclick="loadSample('grade_a', 'Sample 1: Grade A Bivoltine')">🏆 Grade A Bivoltine</button>
-            <button class="sample-chip" onclick="loadSample('stained', 'Sample 2: Stained Cocoon')">⚠️ Stained Cocoon</button>
-            <button class="sample-chip" onclick="loadSample('pierced', 'Sample 3: Uzifly Pierced')">🪰 Uzifly Pierced</button>
-            <button class="sample-chip" onclick="loadSample('not_a_cocoon', 'Sample 4: Non-Cocoon')">❌ Non-Cocoon Object</button>
+            <button class="sample-chip" id="chip-grade_a" onclick="loadSample('grade_a', 'Sample 1: Grade A Bivoltine')">🏆 Grade A Bivoltine</button>
+            <button class="sample-chip" id="chip-stained" onclick="loadSample('stained', 'Sample 2: Stained Cocoon')">⚠️ Stained Cocoon</button>
+            <button class="sample-chip" id="chip-pierced" onclick="loadSample('pierced', 'Sample 3: Uzifly Pierced')">🪰 Uzifly Pierced</button>
+            <button class="sample-chip" id="chip-not_a_cocoon" onclick="loadSample('not_a_cocoon', 'Sample 4: Non-Cocoon')">❌ Non-Cocoon Object</button>
           </div>
 
           <!-- Action row (Upload vs Camera) -->
@@ -714,6 +849,10 @@ HTML_LANDING_PAGE = """<!DOCTYPE html>
 
           <!-- Result Container -->
           <div class="result-container" id="result-container">
+            <div class="demo-notice-bar" id="demo-notice-bar">
+              ℹ️ <strong>Demo Preset Mode:</strong> Showing CSTRI reference evaluation. To analyze your own custom photo with live Vision AI, enter your API key on the left.
+            </div>
+
             <div class="grade-banner" id="grade-banner">
               <span class="grade-badge-pill" id="grade-badge">COMMERCIAL GRADE</span>
               <div class="grade-title" id="grade-title">GRADE A</div>
@@ -855,20 +994,6 @@ HTML_LANDING_PAGE = """<!DOCTYPE html>
 
     <!-- TAB 4: API & SETTINGS -->
     <div id="tab-api" class="tab-panel">
-      <div class="card" style="margin-bottom: 24px;">
-        <div class="card-title">⚙️ API Key Configuration (Optional)</div>
-        <div class="card-sub">Your API key is stored only in your browser session and sent encrypted to the server.</div>
-
-        <div style="display: flex; gap: 10px; margin-bottom: 14px;">
-          <input type="password" id="user-api-key" class="chat-input" placeholder="Enter Gemini or Sarvam API Key (AIzaSy... / sk_...)" style="flex: 1;">
-          <button class="btn btn-primary" onclick="saveApiKey()" style="width: auto; padding: 12px 20px;">Save Key</button>
-        </div>
-        <p style="font-size: 12px; color: var(--text-muted);">
-          Get a free key from <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color: var(--green-primary); font-weight: 600;">Google AI Studio</a>.
-          If no key is entered, SilkCocoon AI uses the backend environment key or CSTRI reference fallbacks.
-        </p>
-      </div>
-
       <div class="card">
         <div class="card-title">🔌 REST API Endpoints</div>
         <div class="card-sub">Integrate SilkCocoon AI grading directly into your mobile app or मंडी ERP system.</div>
@@ -898,25 +1023,24 @@ HTML_LANDING_PAGE = """<!DOCTYPE html>
 
   <script>
     let activeImageBase64 = null;
+    let activeSampleTag = null;
     let currentResult = null;
     let cameraStream = null;
 
     // Load saved API Key if any
     document.addEventListener('DOMContentLoaded', () => {
-      const savedKey = localStorage.getItem('silk_api_key');
+      const savedKey = localStorage.getItem('silk_api_key') || '';
       if (savedKey) {
-        document.getElementById('user-api-key').value = savedKey;
+        document.getElementById('inspector-api-key').value = savedKey;
       }
     });
 
-    function saveApiKey() {
-      const val = document.getElementById('user-api-key').value.trim();
+    function syncApiKey(val) {
+      val = val.trim();
       if (val) {
         localStorage.setItem('silk_api_key', val);
-        alert('API Key saved locally for this browser session!');
       } else {
         localStorage.removeItem('silk_api_key');
-        alert('API Key cleared.');
       }
     }
 
@@ -956,6 +1080,8 @@ HTML_LANDING_PAGE = """<!DOCTYPE html>
         alert('Please select a valid image file (JPG, PNG, or WEBP).');
         return;
       }
+      activeSampleTag = null; // custom file, not demo preset
+      document.querySelectorAll('.sample-chip').forEach(c => c.classList.remove('active'));
       const reader = new FileReader();
       reader.onload = (e) => {
         setImage(e.target.result, file.name + ' (' + Math.round(file.size / 1024) + ' KB)');
@@ -975,6 +1101,8 @@ HTML_LANDING_PAGE = """<!DOCTYPE html>
 
     function clearImage() {
       activeImageBase64 = null;
+      activeSampleTag = null;
+      document.querySelectorAll('.sample-chip').forEach(c => c.classList.remove('active'));
       document.getElementById('preview-box').style.display = 'none';
       document.getElementById('drop-zone').style.display = 'block';
       document.getElementById('file-input').value = '';
@@ -986,12 +1114,17 @@ HTML_LANDING_PAGE = """<!DOCTYPE html>
     // Preset Samples
     async function loadSample(sampleName, caption) {
       try {
+        activeSampleTag = sampleName;
+        document.querySelectorAll('.sample-chip').forEach(c => c.classList.remove('active'));
+        const activeChip = document.getElementById('chip-' + sampleName);
+        if (activeChip) activeChip.classList.add('active');
+
         const resp = await fetch(`/api/sample/${sampleName}`);
         if (!resp.ok) throw new Error('Sample fetch failed');
         const blob = await resp.blob();
         const reader = new FileReader();
         reader.onload = (e) => {
-          setImage(e.target.result, caption);
+          setImage(e.target.result, caption + ' (Preset Sample)');
         };
         reader.readAsDataURL(blob);
       } catch (err) {
@@ -1025,6 +1158,7 @@ HTML_LANDING_PAGE = """<!DOCTYPE html>
       const ctx = canvas.getContext('2d');
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+      activeSampleTag = null;
       setImage(dataUrl, 'Live Camera Capture (' + canvas.width + 'x' + canvas.height + 'px)');
     }
 
@@ -1043,6 +1177,15 @@ HTML_LANDING_PAGE = """<!DOCTYPE html>
     async function runAnalysis() {
       if (!activeImageBase64) return;
 
+      const apiKey = getApiKey();
+      if (!activeSampleTag && !apiKey) {
+        const keyInput = document.getElementById('inspector-api-key');
+        keyInput.style.borderColor = '#EF4444';
+        keyInput.focus();
+        alert('🔑 API Key Required for Custom Photos:\n\nPlease paste your free Google Gemini API key (starts with AIzaSy) or Sarvam key in the box above the button to analyze your own photo!\n\n(You can also click any of the 4 Quick Demo Presets to test without an API key).');
+        return;
+      }
+
       document.getElementById('empty-state').style.display = 'none';
       document.getElementById('result-container').style.display = 'none';
       document.getElementById('spinner-wrap').style.display = 'block';
@@ -1051,7 +1194,8 @@ HTML_LANDING_PAGE = """<!DOCTYPE html>
       try {
         const payload = {
           image_base64: activeImageBase64,
-          api_key: getApiKey()
+          api_key: apiKey,
+          sample_tag: activeSampleTag
         };
 
         const res = await fetch('/api/analyze', {
@@ -1082,6 +1226,14 @@ HTML_LANDING_PAGE = """<!DOCTYPE html>
     function renderResult(data) {
       currentResult = data;
       document.getElementById('result-container').style.display = 'block';
+
+      // Demo notice
+      const noticeBar = document.getElementById('demo-notice-bar');
+      if (data.demo_mode) {
+        noticeBar.style.display = 'block';
+      } else {
+        noticeBar.style.display = 'none';
+      }
 
       const grade = data.grade || 'Grade A';
       const score = data.overall_score !== null && data.overall_score !== undefined ? data.overall_score : 88.0;
@@ -1291,17 +1443,20 @@ def analyze_endpoint():
     Analyzes an uploaded cocoon image and returns grading and defect metrics.
     Accepts:
     1. Multipart form file: 'image'
-    2. JSON payload: { 'image_base64': '...', 'api_key': '...' }
+    2. JSON payload: { 'image_base64': '...', 'api_key': '...', 'sample_tag': '...' }
     """
     image_bytes = None
     client_api_key = None
+    sample_tag = None
 
     if "image" in request.files:
         image_bytes = request.files["image"].read()
         client_api_key = request.form.get("api_key") or request.headers.get("X-API-Key")
+        sample_tag = request.form.get("sample_tag")
     else:
         json_data = request.get_json(silent=True) or {}
         client_api_key = json_data.get("api_key") or request.headers.get("X-API-Key")
+        sample_tag = json_data.get("sample_tag")
         b64 = json_data.get("image_base64", "")
         if b64:
             if "," in b64:
@@ -1322,7 +1477,14 @@ def analyze_endpoint():
     # 2. Invoke Vision Analysis
     ai_success, parsed_ai, ai_err = analyze_cocoon_image_with_gemini(pil_image, api_key=client_api_key)
     if not ai_success:
-        return jsonify({"status": "AI_ERROR", "message": ai_err}), 500
+        # Fallback to demo preset benchmark if client selected a bundled sample preset
+        if sample_tag and sample_tag in DEMO_SAMPLE_BENCHMARKS:
+            parsed_ai = DEMO_SAMPLE_BENCHMARKS[sample_tag]
+            result = calculate_cocoon_grade(parsed_ai)
+            resp_dict = result.to_dict()
+            resp_dict["demo_mode"] = True
+            return jsonify(resp_dict)
+        return jsonify({"status": "AI_ERROR", "message": ai_err}), 400
 
     # 3. Calculate CSTRI Grade
     result = calculate_cocoon_grade(parsed_ai)
